@@ -70,7 +70,7 @@ async function sendDailyPoll() {
         const pollOptions = ['Sim', 'Não'];
 
         await targetGroup.sendMessage(
-            `📊 *${pollTitle}*\n\nResponda à enquete:`
+            `*${pollTitle}*`
         );
 
         await targetGroup.sendPoll(pollTitle, pollOptions);
