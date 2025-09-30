@@ -30,8 +30,16 @@ client.on('qr', (qr) => {
 client.on('ready', () => {
     console.log('WhatsApp bot is ready!');
     console.log(`Bot will send daily polls at ${config.pollTime}`);
+    console.log('💡 To test immediately, send "!test" to the bot in any chat');
     
     scheduleDailyPoll();
+});
+
+client.on('message', async (message) => {
+    if (message.body === '!test') {
+        console.log('Test command received! Sending poll now...');
+        await sendDailyPoll();
+    }
 });
 
 client.on('authenticated', () => {
