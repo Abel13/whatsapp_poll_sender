@@ -3,3 +3,5 @@ node_modules/
 .wwebjs_cache/
 *.log
 npm-debug.log*
+.local
+.config

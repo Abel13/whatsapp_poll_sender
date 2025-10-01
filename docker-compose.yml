@@ -1,0 +1,11 @@
+version: "3.8"
+
+services:
+  whatsapp-bot:
+    build: .
+    container_name: whatsapp_bot
+    ports:
+      - "3000:3000" # Altere se a porta do seu app for outra
+    volumes:
+      - .:/app
+    restart: unless-stopped
