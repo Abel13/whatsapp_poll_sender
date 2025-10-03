@@ -4,8 +4,18 @@ services:
   whatsapp-bot:
     build: .
     container_name: whatsapp_bot
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      # You can also set single variables here instead of using .env
+      # - CRONITOR_API_KEY=your_key_here
     ports:
       - "3000:3000" # Altere se a porta do seu app for outra
     volumes:
       - .:/app
+      - ./sessions:/app/sessions
     restart: unless-stopped
+# Observações:
+# - Crie um arquivo .env na raiz com CRONITOR_API_KEY=seu_token para manter a chave fora do código.
+# - Certifique-se de que a pasta ./sessions existe (ou será criada) para persistência da sessão do WhatsApp.

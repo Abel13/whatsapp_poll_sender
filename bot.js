@@ -2,7 +2,14 @@ const { Client, LocalAuth, Poll } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const cron = require("node-cron");
 const fs = require("fs");
+const cronitor = require("cronitor")(process.env.CRONITOR_API_KEY);
+const fetch = require("node-fetch");
 
+cronitor.wraps(cron);
+const monitor = new cronitor.Monitor("daily_poll_bot");
+
+// chave do monitor (consistente)
+const MONITOR_KEY = "daily_poll_bot";
 const config = JSON.parse(fs.readFileSync("./config.json", "utf-8"));
 
 const client = new Client({
@@ -32,17 +39,16 @@ client.on("ready", () => {
   console.log(`Bot will send daily polls at ${config.pollTime}`);
   console.log('💡 To test immediately, send "!test" to the bot in any chat');
 
-  // Registra o listener de mensagem aqui
-  client.on("message", async (message) => {
-    console.log("Message received!");
-    console.log("From:", message.from, "| Body:", message.body);
-    if (message.body === "!test") {
-      console.log("Test command received! Sending poll now...");
-      await sendDailyPoll();
-    }
-  });
-
   scheduleDailyPoll();
+});
+
+// Registra o listener de mensagem aqui
+client.on("message", async (message) => {
+  if (message.body === "!test") {
+    console.log("From:", message.from, "| Body:", message.body);
+    console.log("Test command received! Sending poll now...");
+    await sendDailyPoll();
+  }
 });
 
 client.on("authenticated", () => {
@@ -73,6 +79,15 @@ async function sendDailyPoll() {
         .forEach((group) => {
           console.log(`- ${group.name}`);
         });
+      // opcional: notificar monitor de falha por ausência de grupo
+      try {
+        await monitor.ping(MONITOR_KEY, {
+          state: "fail",
+          message: "group_not_found",
+        });
+      } catch (e) {
+        console.error("Cronitor ping fail:", e.message);
+      }
       return;
     }
 
@@ -96,7 +111,8 @@ async function sendDailyPoll() {
   }
 }
 
-function scheduleDailyPoll() {
+async function scheduleDailyPoll() {
+  console.log(`Version 1.0.1`);
   const [hour, minute] = config.pollTime.split(":");
   const cronExpression = `${minute} ${hour} * * *`;
 
@@ -106,16 +122,71 @@ function scheduleDailyPoll() {
     `Daily poll will be sent at ${config.pollTime} (${config.timezone})`
   );
 
+  // cria/atualiza monitor no Cronitor usando a API HTTP oficial
+  const monitorPayload = {
+    monitors: [
+      {
+        type: "job",
+        key: MONITOR_KEY,
+        schedule: cronExpression,
+        timezone: config.timezone,
+        note: "Envia enquete diária",
+      },
+    ],
+  };
+
+  try {
+    const encoded = Buffer.from(`${process.env.CRONITOR_API_KEY}:`).toString(
+      "base64"
+    );
+
+    const res = await fetch("https://cronitor.io/api/monitors", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${encoded}`,
+      },
+      body: JSON.stringify(monitorPayload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Cronitor API error: ${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    console.log("Cronitor monitor created/updated:", data);
+  } catch (err) {
+    console.error("Erro ao criar/atualizar monitor no Cronitor:", err.message);
+  }
+
   cron.schedule(
     cronExpression,
-    () => {
-      console.log("Executing scheduled poll...");
-      sendDailyPoll();
-    },
+    cronitor.wrap("daily_poll_bot", async () => {
+      console.log("⏰ Executando agendamento:", new Date().toLocaleString());
+      try {
+        await monitor.ping(MONITOR_KEY, { state: "run" });
+      } catch (e) {
+        console.error("Cronitor ping (run) error:", e.message);
+      }
+
+      try {
+        await sendDailyPoll();
+        // sinaliza sucesso
+        await monitor.ping(MONITOR_KEY, { state: "complete" });
+      } catch (err) {
+        // sinaliza falha
+        await monitor.ping(MONITOR_KEY, {
+          state: "fail",
+          message: err.message,
+        });
+      }
+    }),
     {
       timezone: config.timezone,
     }
   );
+
+  console.log(`✅ Poll agendado com: ${cronExpression}`);
 }
 
 client.initialize();
